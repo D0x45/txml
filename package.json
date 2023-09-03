@@ -1,0 +1,13 @@
+{
+  "name": "txml",
+  "description": "tiny xml parser in typescript",
+  "author": {
+    "name": "D0x45",
+    "url": "https://github.com/d0x45"
+  },
+  "version": "0.0.1",
+  "private": false,
+  "devDependencies": {
+    "@types/node": "20.5.9"
+  }
+}
