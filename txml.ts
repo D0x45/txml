@@ -175,7 +175,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
 
   /** translate entities such as `&amp;` (AMPERSAND) and `&#039;` (SINGLE_QUOTE) */
   const translateEntity = (from: string): CodePoint => {
-    if (from.at(0) === '#') return Number.parseInt(from.substring(1), 10);
+    if (from.charAt(0) === '#') return Number.parseInt(from.substring(1), 10);
     if (entity_map[from] === undefined) throwError(`translation for entity &${from}; not found`);
     return entity_map[from];
   };
