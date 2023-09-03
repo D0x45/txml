@@ -1,8 +1,8 @@
 {
-	"compilerOptions": {
-		"target": "es2021",
-		"lib": ["es2021"],
-		"module": "es2022",
-		"types": ["@types/node"]
-	}
+  "compilerOptions": {
+    "target": "es2021",
+    "lib": ["es2021"],
+    "module": "es2022",
+    "types": ["@types/node"]
+  }
 }
