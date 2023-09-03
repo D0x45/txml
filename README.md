@@ -1,2 +1,2 @@
 # txml
- tiny XML parser in typescipt
+tiny xml parser in typescript
