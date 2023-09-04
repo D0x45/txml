@@ -171,6 +171,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
     amp: CodePoint.AMPERSAND,
     lt: CodePoint.ANGLE_BRACKET_OPEN,
     gt: CodePoint.ANGLE_BRACKET_CLOSE,
+    apos: CodePoint.SINGLE_QUOTE,
   };
 
   /** translate entities such as `&amp;` (AMPERSAND) and `&#039;` (SINGLE_QUOTE) */
