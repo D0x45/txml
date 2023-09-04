@@ -3,16 +3,18 @@ tiny xml parser in typescript
 
 
 # getting started
-for using it you can include the `txml.ts` file in your project with npm:
-
-```$ npm install d0x45/txml#master```
-
-or if you are using deno just include the github raw url.
+to start using it you can install it with npm:
+```npm install d0x45/txml#master```
+or if you are using deno just import the github raw url.
 
 # how it works
 i tried to keep this as simple as possible, so there are two functions:
- - `xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Generator<Readonly<XMLToken>, never | void>`
- - `xml_tree(tokens: Generator<Readonly<XMLToken>>, tag_open_name?: string): Array<XMLNode>`
+```ts
+xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Generator<Readonly<XMLToken>, never | void>
+```
+```ts
+ xml_tree(tokens: Generator<Readonly<XMLToken>>): Array<XMLNode>
+ ```
 
 the former is a generator function, and the latter is a recursive tree builder.
 
