@@ -28,6 +28,8 @@ walkXmlNodes(tokens: TokensIterator, callback: (path: string, node: XMLNode, par
 ```
 this function calls the provided callback on each node reporting the parent nodes, the node itself and a `path` argument which is a concatenation of parents' tagNames (e.g. `feed.entry.media:thumbnail`)
 
+if the callback function returns boolean `true`, the iteration will be stopped
+
 *note: the nodes returned by this function don't have the `children` field as it is not possible to compute that value*
 
 here is a little example:
