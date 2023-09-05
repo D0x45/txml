@@ -50,6 +50,11 @@ for (const token of parseXml(xml)) {
     // see https://en.wikipedia.org/wiki/Simple_API_for_XML
 }
 ```
+or turn them into an array all at once:
+```ts
+const tokens = [...parseXml(xml)];
+const tree = buildXmlTree(tokens.values());
+```
 
 # types
 
