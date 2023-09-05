@@ -51,9 +51,7 @@ export type XMLInput =
     };
 
 /** the generator result XMLToken */
-export type TokensIterator =
-  | Generator<Readonly<XMLToken>, never | void>
-  | IterableIterator<Readonly<XMLToken>>;
+export type TokensIterator = Generator<Readonly<XMLToken>, never | void> | IterableIterator<Readonly<XMLToken>>;
 
 export enum XMLTag {
   /** not a tag. usually is set for `type: XMLTokenType.TEXT` */
@@ -255,7 +253,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
     throw new Error(
       `${msg} (pos:${pos}, c0:${char_code}/'${String.fromCharCode(
         char_code
-      )}', canSkipWhitespace:${canSkipWhitespace}, state:${state}, rtState=${rtState}, column:${column}, line:${line}, token:${JSON.stringify(
+      )}', canSkipWhitespace:${canSkipWhitespace}, state:${state}, rtState=${rtState}, line:${line}, column:${column}, token:${JSON.stringify(
         token
       )})`
     );
@@ -284,12 +282,17 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
       case ParserState.NONE:
         // whitespace-sensitive
         canSkipWhitespace = false;
-        _resetToken();
+
+        // NOTE: is the following line necessary?
+        // _resetToken();
 
         // well, we are going to have a text node
         if (c0 !== CodePoint.ANGLE_BRACKET_OPEN) {
           state = ParserState.READING_TEXT_NODE;
-          token.content.push(c0);
+          // bugfix: if c0 was an ampersand for entity escaping.
+          // it would not be translated as the ampersand was not caught in the corresponding state;
+          pos -= 1;
+          column -= 1;
         }
         // yay, this is going to be a tag
         else {
@@ -304,6 +307,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             state = ParserState.READING_TAG_UNTIL_CLOSE;
             // skip the ?
             ++pos;
+            ++column;
             ++token.start;
           } else if (c1 === CodePoint.FORWARD_SLASH) {
             token.type = XMLTokenType.TAG_CLOSE;
@@ -311,6 +315,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             state = ParserState.READING_TAG_UNTIL_CLOSE;
             // skip the /
             ++pos;
+            ++column;
             ++token.start;
           } else if (_isAlphabetic(c1)) {
             token.type = XMLTokenType.TAG_OPEN;
@@ -322,6 +327,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             state = ParserState.READING_CDATA;
             // skip the ![CDATA[
             pos += 8;
+            column += 8;
             token.start += 8;
           } else if (_sliceEqualsStr('!--', pos + 1)) {
             token.type = XMLTokenType.TAG_SELF_CLOSE;
@@ -329,6 +335,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             state = ParserState.READING_COMMENT;
             // skip the !--
             pos += 3;
+            column += 3;
             token.start += 3;
           } else _throwError('Invalid tag name');
         }
@@ -343,7 +350,9 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
           _resetToken();
           canSkipWhitespace = true;
           state = ParserState.NONE;
-          pos += 3; // jump to the end of comment block
+          // jump to the end of comment block
+          pos += 3;
+          column += 3;
         } else {
           token.content.push(c0);
           token.end = pos;
@@ -357,7 +366,9 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
           _resetToken();
           canSkipWhitespace = true;
           state = ParserState.NONE;
-          pos += 3; // jump to the end of cdata block
+          // jump to the end of cdata block
+          pos += 3;
+          column += 3;
         } else {
           token.content.push(c0);
           token.end = pos;
@@ -428,7 +439,9 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
           canSkipWhitespace = true;
           state = ParserState.NONE;
           rtState = ReadingTagState.READING_TAG_NAME;
-          pos += c0 === CodePoint.ANGLE_BRACKET_CLOSE ? 0 : 1; // skip the ? or / before >
+          // skip the ? or / before >
+          pos += c0 === CodePoint.ANGLE_BRACKET_CLOSE ? 0 : 1;
+          column += c0 === CodePoint.ANGLE_BRACKET_CLOSE ? 0 : 1;
           break; // end the switch(state) control flow
         }
 
