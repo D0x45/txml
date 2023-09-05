@@ -51,7 +51,9 @@ export type XMLInput =
     };
 
 /** the generator result XMLToken */
-export type TokensIterator = Generator<Readonly<XMLToken>, never | void, Readonly<XMLToken>>;
+export type TokensIterator =
+  | Generator<Readonly<XMLToken>, never | void>
+  | IterableIterator<Readonly<XMLToken>>;
 
 export enum XMLTag {
   /** not a tag. usually is set for `type: XMLTokenType.TEXT` */
