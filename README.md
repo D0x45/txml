@@ -21,7 +21,7 @@ buildXmlTree(tokens: TokensIterator, parentTagName?: string): Array<XMLNode>
 ```
 a recursive function that takes a `TokensIterator` and returns an array of `XMLNode`s.
 
-*note: the second argument is a way to validate closing tags (do not provide a value)*
+*note: the second argument is a way to validate closing tags while recursively calling itself (do not provide a value manually)*
 
 ```ts
 walkXmlNodes(tokens: TokensIterator, callback: (path: string, node: XMLNode, parents: Array<XMLNode>) => void | true)
