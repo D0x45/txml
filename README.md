@@ -104,7 +104,7 @@ type XMLToken = {
   start: number; // start index of the token
   end: number; // end index of the token
   // array of charCodes for content. (e.g. [97,97,97,97])
-  // to turn into string, must use String.fromCharCode(...token.content)
+  // to turn into string, use getContentAsStr(token.content)
   // this field might contain the content of a CDATA, COMMENT or TEXT block,
   // or it might contain the tagName of ARBITRARY and DECLARATION tags
   // it all depends on the tag value
