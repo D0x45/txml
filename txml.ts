@@ -1,4 +1,5 @@
 // deno-lint-ignore-file no-case-declarations
+
 enum CodePoint {
   EXCLAMATION = 33,
   DOUBLE_QUOTE = 34,
@@ -49,9 +50,11 @@ export type XMLInput =
       charCodeAt: (i: number) => number;
     };
 
-/** type of the tag (honestly i don't know how to describe this) */
+/** the generator result XMLToken */
+export type TokensIterator = Generator<Readonly<XMLToken>, never | void, Readonly<XMLToken>>;
+
 export enum XMLTag {
-  /** not yet known. usually is set for `type: XMLTokenType.TEXT` */
+  /** not a tag. usually is set for `type: XMLTokenType.TEXT` */
   NONE = 0,
   /** xml prolog (e.g. `<?identifier ... ?>`) */
   DECLARATION,
@@ -63,9 +66,8 @@ export enum XMLTag {
   ARBITRARY,
 }
 
-/** type of the token */
 export enum XMLTokenType {
-  /** any text value */
+  /** any data tag (e.g. `XMLTag.NONE`, `XMLTag.CDATA` or `XMLTag.COMMENT`) */
   TEXT = 0,
   /** opened tag (e.g. `<?`, `<!`, `<[a-zA-Z]`) */
   TAG_OPEN,
@@ -75,26 +77,39 @@ export enum XMLTokenType {
   TAG_SELF_CLOSE,
 }
 
-/** the attribute item */
 export type XMLTokenAttribute = {
+  /** key name array of char codes */
   key: Array<number>;
+  /** value array of char codes */
   value: Array<number>;
+  /** termination character is either " or ' (e.g. key="value") */
   term_c: number;
+  /** starting index of key */
   start: number;
+  /** index of the last term_c character */
   end: number;
 };
 
-/** every sequence is represented via this token type */
 export type XMLToken = {
   type: XMLTokenType;
   tag: XMLTag;
+  /** start index of the token */
   start: number;
+  /** index of the last character that ended this token */
   end: number;
+  /**
+   * array of charCodes for content. (e.g. `[97,97,97,97]`)
+   * to turn into string, you may use `String.fromCharCode(...token.content)`
+   * this field might contain the content of a `CDATA`, `COMMENT` or `TEXT` block,
+   * or it might contain the `tagName` of `ARBITRARY` and `DECLARATION` tags
+   * it all depends on the `tag`'s value
+   */
   content: Array<number>;
+  /** you may use `getAttributesAsMap` */
   attributes?: Array<XMLTokenAttribute>;
 };
 
-/** xml node type (duh) */
+/** recursive node type */
 export type XMLNode =
   | {
       type: XMLTag.ARBITRARY | XMLTag.DECLARATION;
@@ -108,21 +123,21 @@ export type XMLNode =
     };
 
 // A: 65, Z: 90, z: 122, a: 97
-const isAlphabetic = (codepoint: number) => (codepoint < 91 && codepoint > 64) || (codepoint < 123 && codepoint > 96);
+const _isAlphabetic = (codepoint: number) => (codepoint < 91 && codepoint > 64) || (codepoint < 123 && codepoint > 96);
 
 // 0: 48, 9: 57
-const isNumeric = (codepoint: number) => codepoint > 47 && codepoint < 58;
+const _isNumeric = (codepoint: number) => codepoint > 47 && codepoint < 58;
 
 // '\r\t\n '
-const isWhitespace = (codepoint: number) => [CodePoint.CR, CodePoint.LF, CodePoint.TAB, CodePoint.SPACE].includes(codepoint);
+const _isWhitespace = (codepoint: number) => [CodePoint.CR, CodePoint.LF, CodePoint.TAB, CodePoint.SPACE].includes(codepoint);
 
 // Tag names cannot contain any of the characters !"#$%&'()*+,/;<=>?@[\]^`{|}~,
 // nor a space character, and cannot begin with "-", ".", or a numeric digit.
-const isValidIdentifier = (codepoint: number) =>
-  isAlphabetic(codepoint) || isNumeric(codepoint) || codepoint === CodePoint.COLON || codepoint === CodePoint.HYPHEN;
+const _isValidIdentifier = (codepoint: number) =>
+  _isAlphabetic(codepoint) || _isNumeric(codepoint) || codepoint === CodePoint.COLON || codepoint === CodePoint.HYPHEN;
 
 // validate input
-const isXMLInput = (i: unknown): i is XMLInput =>
+const _isXMLInput = (i: unknown): i is XMLInput =>
   typeof i === 'string' ||
   (typeof i === 'object' &&
     i !== null &&
@@ -131,8 +146,12 @@ const isXMLInput = (i: unknown): i is XMLInput =>
     'charCodeAt' in i &&
     typeof i['charCodeAt'] === 'function');
 
-export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Generator<Readonly<XMLToken>, never | void> {
-  if (false === isXMLInput(xml)) throw new Error('xml input invalid');
+export function getAttributesAsMap(attributes: Array<XMLTokenAttribute>): Record<string, string> {
+  return Object.fromEntries(attributes.map((attr) => [String.fromCharCode(...attr.key), String.fromCharCode(...attr.value)]));
+}
+
+export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): TokensIterator {
+  if (false === _isXMLInput(xml)) throw new Error('xml input invalid');
 
   let pos = 0,
     line = 1,
@@ -141,7 +160,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
     state = ParserState.NONE,
     rtState = ReadingTagState.READING_TAG_NAME,
     /** whether the whitespace can be omitted */
-    canSkipWhitespace = skipStartingWhitespace;
+    canSkipWhitespace = canSkipStartingWhitespace;
 
   /** current token */
   const token: XMLToken = {
@@ -166,7 +185,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
    * html entity translation table
    * @todo support dtd tags
    */
-  const entity_map: Record<string, CodePoint> = {
+  const entityMap: Record<string, CodePoint> = {
     quot: CodePoint.DOUBLE_QUOTE,
     amp: CodePoint.AMPERSAND,
     lt: CodePoint.ANGLE_BRACKET_OPEN,
@@ -175,14 +194,14 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
   };
 
   /** translate entities such as `&amp;` (AMPERSAND) and `&#039;` (SINGLE_QUOTE) */
-  const translateEntity = (from: string): CodePoint => {
+  const _translateEntity = (from: string): CodePoint => {
     if (from.charAt(0) === '#') return Number.parseInt(from.substring(1), 10);
-    if (entity_map[from] === undefined) throwError(`translation for entity &${from}; not found`);
-    return entity_map[from];
+    if (entityMap[from] === undefined) _throwError(`translation for entity &${from}; not found`);
+    return entityMap[from];
   };
 
   /** reset attribute temp values and optionally push this to the token's attributes beforehand */
-  const resetAttribute = (push_to_current_token = false) => {
+  const _resetAttribute = (push_to_current_token = false) => {
     if (push_to_current_token) {
       if (token.attributes === undefined) token.attributes = [];
       const attribute_deep_copy: XMLTokenAttribute = Object.freeze(structuredClone(attribute));
@@ -198,18 +217,18 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
   };
 
   /** reset current token data to default values */
-  const resetToken = (type?: XMLTokenType, tag?: XMLTag): void => {
+  const _resetToken = (type?: XMLTokenType, tag?: XMLTag): void => {
     token.type = type === undefined ? XMLTokenType.TEXT : type;
     token.tag = tag === undefined ? XMLTag.NONE : tag;
     token.start = pos;
     token.end = -1;
     token.content.length = 0;
     token.attributes = undefined;
-    resetAttribute();
+    _resetAttribute();
   };
 
   /** clone current token and freeze it */
-  const cloneAndFreezeToken = () => {
+  const _cloneAndFreezeToken = () => {
     const token_deep_copy: Readonly<XMLToken> = Object.freeze(structuredClone(token));
     Object.freeze(token_deep_copy.content);
     if (token_deep_copy.attributes !== undefined) Object.freeze(token_deep_copy.attributes);
@@ -217,7 +236,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
   };
 
   /** take a string and compare it byte-by-byte to xml input starting from the given index */
-  const sliceEqualsStr = (needle: string, start_index: number): boolean => {
+  const _sliceEqualsStr = (needle: string, start_index: number): boolean => {
     for (let i = 0; i < needle.length; ++i) {
       if (needle.charCodeAt(i) !== xml.charCodeAt(start_index + i)) return false;
     }
@@ -225,7 +244,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
   };
 
   /** halts the tokenizing process and throws an error */
-  const throwError = (msg: string): never => {
+  const _throwError = (msg: string): never => {
     const char_code = xml.charCodeAt(pos);
     throw new Error(
       `${msg} (pos:${pos}, c0:${char_code}/'${String.fromCharCode(
@@ -241,7 +260,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
     const c0 = xml.charCodeAt(pos);
 
     // maybe string ended? or any kind of unexpected output
-    if (c0 === 0 || Number.isNaN(c0)) throwError('CodePoint NaN or Zero');
+    if (c0 === 0 || Number.isNaN(c0)) _throwError('CodePoint NaN or Zero');
 
     // we reached a line feed
     if (c0 === CodePoint.LF) {
@@ -253,13 +272,13 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
     column += c0 === CodePoint.TAB ? 4 : 1;
 
     // sometimes whitespace doesn't matter, just like our existence
-    if (canSkipWhitespace && isWhitespace(c0)) continue;
+    if (canSkipWhitespace && _isWhitespace(c0)) continue;
 
     switch (state) {
       case ParserState.NONE:
         // whitespace-sensitive
         canSkipWhitespace = false;
-        resetToken();
+        _resetToken();
 
         // well, we are going to have a text node
         if (c0 !== CodePoint.ANGLE_BRACKET_OPEN) {
@@ -287,25 +306,25 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
             // skip the /
             ++pos;
             ++token.start;
-          } else if (isAlphabetic(c1)) {
+          } else if (_isAlphabetic(c1)) {
             token.type = XMLTokenType.TAG_OPEN;
             token.tag = XMLTag.ARBITRARY;
             state = ParserState.READING_TAG_UNTIL_CLOSE;
-          } else if (sliceEqualsStr('![CDATA[', pos + 1)) {
+          } else if (_sliceEqualsStr('![CDATA[', pos + 1)) {
             token.type = XMLTokenType.TAG_SELF_CLOSE;
             token.tag = XMLTag.CDATA;
             state = ParserState.READING_CDATA;
             // skip the ![CDATA[
             pos += 8;
             token.start += 8;
-          } else if (sliceEqualsStr('!--', pos + 1)) {
+          } else if (_sliceEqualsStr('!--', pos + 1)) {
             token.type = XMLTokenType.TAG_SELF_CLOSE;
             token.tag = XMLTag.COMMENT;
             state = ParserState.READING_COMMENT;
             // skip the !--
             pos += 3;
             token.start += 3;
-          } else throwError('Invalid tag name');
+          } else _throwError('Invalid tag name');
         }
         break;
 
@@ -313,9 +332,9 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
         // well, the comment block ends after two more characters so why not end it right now?
         // you might ask isn't the comparison redundant here?
         // well, yes and no. i'm just trying to prevent an extra function call and an extra loop of O(3)
-        if (c0 === CodePoint.HYPHEN && sliceEqualsStr('-->', pos)) {
-          yield cloneAndFreezeToken();
-          resetToken();
+        if (c0 === CodePoint.HYPHEN && _sliceEqualsStr('-->', pos)) {
+          yield _cloneAndFreezeToken();
+          _resetToken();
           canSkipWhitespace = true;
           state = ParserState.NONE;
           pos += 3; // jump to the end of comment block
@@ -327,9 +346,9 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
 
       case ParserState.READING_CDATA:
         // data block reached the end of it
-        if (c0 === CodePoint.SQUARE_BRACKET_CLOSE && sliceEqualsStr(']]>', pos)) {
-          yield cloneAndFreezeToken();
-          resetToken();
+        if (c0 === CodePoint.SQUARE_BRACKET_CLOSE && _sliceEqualsStr(']]>', pos)) {
+          yield _cloneAndFreezeToken();
+          _resetToken();
           canSkipWhitespace = true;
           state = ParserState.NONE;
           pos += 3; // jump to the end of cdata block
@@ -355,7 +374,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
             ++token.end; // count the SEMICOLON that was skipped
             pos += entity_bytes.length + 1;
             column += entity_bytes.length + 1;
-            token.content.push(translateEntity(String.fromCharCode(...entity_bytes)));
+            token.content.push(_translateEntity(String.fromCharCode(...entity_bytes)));
           }
           // anything else is pretty much the same character
           else {
@@ -369,8 +388,8 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
         // reset state and let the parser think this text never existed :o
         // NOTE: i'm the god of mischief
         else {
-          yield cloneAndFreezeToken();
-          resetToken();
+          yield _cloneAndFreezeToken();
+          _resetToken();
           --pos;
           --column;
           state = ParserState.NONE;
@@ -393,13 +412,13 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
             c0 === CodePoint.ANGLE_BRACKET_CLOSE)
         ) {
           // this is not allowed: <tagName ... ?>
-          if (token.tag !== XMLTag.DECLARATION && c0 === CodePoint.QUESTION) throwError('ending an arbitrary tag with ?> is not allowed');
+          if (token.tag !== XMLTag.DECLARATION && c0 === CodePoint.QUESTION) _throwError('ending an arbitrary tag with ?> is not allowed');
           // mark tags like <br/> and <input/> as self-closing:
           token.type = c0 === CodePoint.FORWARD_SLASH ? XMLTokenType.TAG_SELF_CLOSE : token.type;
           // update the end position for characters it might skip
           token.end = pos + (c0 === CodePoint.ANGLE_BRACKET_CLOSE ? 0 : 1);
-          yield cloneAndFreezeToken();
-          resetToken();
+          yield _cloneAndFreezeToken();
+          _resetToken();
           canSkipWhitespace = true;
           state = ParserState.NONE;
           rtState = ReadingTagState.READING_TAG_NAME;
@@ -409,12 +428,12 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
 
         // <tagName attributeName="attributeQuotedValue" />
         if (rtState === ReadingTagState.READING_TAG_NAME) {
-          if (isWhitespace(c0)) {
+          if (_isWhitespace(c0)) {
             rtState = ReadingTagState.READING_ATTR_NAME;
             canSkipWhitespace = true; // skip all whitespace until the first valid character
-          } else if (isValidIdentifier(c0)) {
+          } else if (_isValidIdentifier(c0)) {
             token.content.push(c0);
-          } else throwError('invalid character for identifier');
+          } else _throwError('invalid character for identifier');
         }
         // attributeName
         else if (rtState === ReadingTagState.READING_ATTR_NAME) {
@@ -425,8 +444,8 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
             if (c1 === CodePoint.EQUAL && c0 !== CodePoint.SPACE) attribute.key.push(c0);
             rtState = ReadingTagState.EXPECTING_EQUAL_SIGN;
             canSkipWhitespace = true;
-          } else if (attribute.key.length === 0 && !isAlphabetic(c0)) throwError('identifier must start with [a-zA-Z]');
-          else if (!isValidIdentifier(c0)) throwError('invalid identifier for attribute name');
+          } else if (attribute.key.length === 0 && !_isAlphabetic(c0)) _throwError('identifier must start with [a-zA-Z]');
+          else if (!_isValidIdentifier(c0)) _throwError('invalid identifier for attribute name');
           else attribute.key.push(c0);
         }
         // =
@@ -434,14 +453,14 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
           if (c0 === CodePoint.EQUAL) {
             canSkipWhitespace = true; // skip until reaching a " or '
             rtState = ReadingTagState.READING_ATTR_VALUE;
-          } else throwError('expected =');
+          } else _throwError('expected =');
         } else if (rtState === ReadingTagState.READING_ATTR_VALUE) {
           canSkipWhitespace = false;
           // register the first character as the terminator character
           if (attribute.term_c === 0) {
             // check if value starts with " or '
             if (c0 !== CodePoint.DOUBLE_QUOTE && c0 !== CodePoint.SINGLE_QUOTE)
-              throwError('expected value to start with either of DOUBLE_QUOTE or SINGLE_QUOTE');
+              _throwError('expected value to start with either of DOUBLE_QUOTE or SINGLE_QUOTE');
             attribute.term_c = c0;
             break; // break this case block
           }
@@ -459,7 +478,7 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
           // value ended with the terminator character
           if (c0 === attribute.term_c) {
             attribute.end = pos;
-            resetAttribute(true);
+            _resetAttribute(true);
             canSkipWhitespace = true;
             rtState = ReadingTagState.READING_ATTR_NAME;
           } else attribute.value.push(c0);
@@ -470,24 +489,27 @@ export function* xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Ge
 
   // throw error if stream ended unexpectedly
   if (state !== ParserState.NONE) {
-    if (token.type === XMLTokenType.TEXT) yield cloneAndFreezeToken();
-    else throwError('Unexpected end of stream');
+    if (token.type === XMLTokenType.TEXT) yield _cloneAndFreezeToken();
+    else _throwError('Unexpected end of stream');
   }
 }
 
 /** recursively parse nested tokens and return a tree  */
-export function xml_tree(tokens: Generator<Readonly<XMLToken>>, tag_open_name?: string): Array<XMLNode> {
+export function buildXmlTree(tokens: TokensIterator, parentTagName?: string): Array<XMLNode> {
   const nodes: Array<XMLNode> = [];
 
   // iterate with the generator returned by xml_tokenize function
   tokens_loop: for (let next = tokens.next(); !next.done; next = tokens.next()) {
     const token = next.value;
 
+    // this is not supposed to happen, and i don't know why ts keeps bugging me
+    if (typeof token !== 'object') return nodes;
+
     // tag closed
     if (token.type === XMLTokenType.TAG_CLOSE) {
       const tagName = String.fromCharCode(...token.content);
-      if (typeof tag_open_name === 'string' && tag_open_name !== tagName)
-        throw new Error(`unexpected </${tagName}> expected </${tag_open_name}>`);
+      if (typeof parentTagName === 'string' && parentTagName !== tagName)
+        throw new Error(`unexpected </${tagName}> expected </${parentTagName}>`);
       break tokens_loop;
     }
 
@@ -504,13 +526,56 @@ export function xml_tree(tokens: Generator<Readonly<XMLToken>>, tag_open_name?: 
       nodes.push({
         type: token.tag,
         tagName,
-        attrMap: token.attributes
-          ? Object.fromEntries(token.attributes.map((attr) => [String.fromCharCode(...attr.key), String.fromCharCode(...attr.value)]))
-          : undefined,
-        children: token.type === XMLTokenType.TAG_SELF_CLOSE ? undefined : xml_tree(tokens, tagName),
+        attrMap: token.attributes ? getAttributesAsMap(token.attributes) : undefined,
+        children: token.type === XMLTokenType.TAG_SELF_CLOSE ? undefined : buildXmlTree(tokens, tagName),
       });
     }
   }
 
   return nodes;
+}
+
+/**
+ * walk through nodes and call the callback on each node
+ * @see https://en.wikipedia.org/wiki/Simple_API_for_XML
+ */
+export function walkXmlNodes(tokens: TokensIterator, callback: (path: string, node: XMLNode, parents: Array<XMLNode>) => void | true) {
+  const parents = [];
+
+  tokens_loop: for (const token of tokens) {
+    if (token.type === XMLTokenType.TAG_OPEN) {
+      parents.push({
+        type: XMLTag.ARBITRARY,
+        tagName: String.fromCharCode(...token.content),
+        attrMap: token.attributes ? getAttributesAsMap(token.attributes) : undefined,
+      });
+    }
+
+    if (token.type === XMLTokenType.TAG_CLOSE) {
+      const expectedClosingTagName = parents.pop()?.tagName;
+      const closedTagName = String.fromCharCode(...token.content);
+      if (closedTagName !== expectedClosingTagName)
+        throw `expected </${expectedClosingTagName}> got </${closedTagName}> at position: ${token.start}`;
+    }
+
+    if (token.type === XMLTokenType.TAG_SELF_CLOSE || token.type === XMLTokenType.TEXT) {
+      const node = (
+        token.type === XMLTokenType.TAG_SELF_CLOSE
+          ? {
+              type: token.tag,
+              tagName: String.fromCharCode(...token.content),
+              attrMap: token.attributes ? getAttributesAsMap(token.attributes) : undefined,
+              children: undefined, // self-closing tags do not have any child
+            }
+          : {
+              type: token.tag,
+              content: String.fromCharCode(...token.content),
+            }
+      ) as XMLNode;
+
+      // call the callback and if it returns true,
+      // break the loop
+      if (true === callback(parents.map((p) => p.tagName).join('.'), node, parents as Array<XMLNode>)) break tokens_loop;
+    }
+  }
 }

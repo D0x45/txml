@@ -4,21 +4,31 @@ tiny xml parser in typescript
 
 # getting started
 to start using it you can install it with npm:
+
 ```npm install d0x45/txml#master```
+
 or if you are using deno just import the github raw url.
 
 # how it works
-i tried to keep this as simple as possible, so there are two functions:
+i tried to keep this as simple as possible, so there are three basic functions:
 ```ts
-xml_tokenize(xml: XMLInput, skipStartingWhitespace = false): Generator<Readonly<XMLToken>, never | void>
+parseXml(xml: XMLInput, canSkipStartingWhitespace = false): TokensIterator
 ```
+this function consumes a `XMLInput` and returns a `TokensIterator`
+
 ```ts
- xml_tree(tokens: Generator<Readonly<XMLToken>>): Array<XMLNode>
- ```
+buildXmlTree(tokens: TokensIterator, parentTagName?: string): Array<XMLNode>
+```
+a recursive function that takes a `TokensIterator` and returns an array of `XMLNode`s.
 
-the former is a generator function, and the latter is a recursive tree builder.
+*note: the second argument is a way to validate closing tags (do not provide a value)*
 
-*i believe using a generator tokenizer is much more efficient, because it gives the flexibility to write other functions around it and parse xml into tokens as it goes forward.*
+```ts
+walkXmlNodes(tokens: TokensIterator, callback: (path: string, node: XMLNode, parents: Array<XMLNode>) => void | true)
+```
+this function calls the provided callback on each node reporting the parent nodes, the node itself and a `path` argument which is a concatenation of parents' tagNames (e.g. `feed.entry.media:thumbnail`)
+
+*note: the nodes returned by this function don't have the `children` field as it is not possible to compute that value*
 
 here is a little example:
 ```js
@@ -26,14 +36,14 @@ const xml = `
 <parent>
     <child>some text</child>
 </parent>`;
-const tokens = xml_tokenize(xml);
-const tree = xml_tree(tokens);
+const tokens = parseXml(xml);
+const tree = buildXmlTree(tokens);
 console.log(tree);
 ```
 
-you can also iterate through tokens as they are being processed:
+you can also iterate over tokens as they are being processed:
 ```js
-for (const token of xml_tokenize(xml)) {
+for (const token of parseXml(xml)) {
     //     ^^^^^ is a XMLToken
     // do something with token
     // like maybe a callback?
@@ -42,18 +52,21 @@ for (const token of xml_tokenize(xml)) {
 ```
 
 # types
-the input:
+
 ```ts
+// the input to `parseXml` can be string or just something you put together to read from another buffer.
+// as long as your input is able to read a few characters ahead (let's say like 5 or 6) it does the job.
 type XMLInput =
   | string
   | {
       length: number;
       charCodeAt: (i: number) => number;
     };
-```
-the input to `xml_tokenize` can be string or just something you put together to read from another buffer. as long as your input is able to read a few characters ahead (let's say like 5 or 6) it does the job.
 
-```ts
+// the parseXml function itself is implemented as a Generator
+// todo: maybe implement an Iterator<XMLToken> to widen the range of other functions' inputs?
+type TokensIterator = Generator<Readonly<XMLToken>, never | void, Readonly<XMLToken>>;
+
 enum XMLTokenType {
   TEXT = 0, // any text value
   TAG_OPEN, // opened tag (e.g. `<?`, `<!`, `<[a-zA-Z]`)
@@ -92,10 +105,8 @@ type XMLToken = {
   // convert to map with: Object.fromEntries(token.attributes.map((attr) => [String.fromCharCode(...attr.key), String.fromCharCode(...attr.value)]))
   attributes?: Array<XMLTokenAttribute>;
 };
-```
-and the last type for xml node:
-*it's pretty self-explanatory (i will do anything not to explain my code) :0*
-```ts
+
+// represents any node that might contain children or be a textual node
 type XMLNode =
   | {
       type: XMLTag.ARBITRARY | XMLTag.DECLARATION;
