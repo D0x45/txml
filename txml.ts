@@ -148,8 +148,12 @@ const _isXMLInput = (i: unknown): i is XMLInput =>
     'charCodeAt' in i &&
     typeof i['charCodeAt'] === 'function');
 
+export function getContentAsStr(content: Array<number>): string {
+  return content.reduce((str, c) => str + String.fromCharCode(c), '');
+}
+
 export function getAttributesAsMap(attributes: Array<XMLTokenAttribute>): Record<string, string> {
-  return Object.fromEntries(attributes.map((attr) => [String.fromCharCode(...attr.key), String.fromCharCode(...attr.value)]));
+  return Object.fromEntries(attributes.map((attr) => [getContentAsStr(attr.key), getContentAsStr(attr.value)]));
 }
 
 export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): TokensIterator {
@@ -519,7 +523,7 @@ export function buildXmlTree(tokens: TokensIterator, parentTagName?: string): Ar
     if (token.tag === XMLTag.NONE || token.tag === XMLTag.CDATA || token.tag === XMLTag.COMMENT)
       nodes.push({
         type: token.tag,
-        content: String.fromCharCode(...token.content),
+        content: getContentAsStr(token.content),
       });
 
     // <?declaration ?>, <arbitrary> and <self-close/>
@@ -571,7 +575,7 @@ export function walkXmlNodes(tokens: TokensIterator, callback: (path: string, no
             }
           : {
               type: token.tag,
-              content: String.fromCharCode(...token.content),
+              content: getContentAsStr(token.content),
             }
       ) as XMLNode;
 
