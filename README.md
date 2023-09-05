@@ -108,7 +108,7 @@ type XMLToken = {
   // it all depends on the tag value
   content: Array<number>;
   // possible array of XMLTokenAttribute
-  // convert to map with: Object.fromEntries(token.attributes.map((attr) => [String.fromCharCode(...attr.key), String.fromCharCode(...attr.value)]))
+  // convert to map with: getAttributesAsMap()
   attributes?: Array<XMLTokenAttribute>;
 };
 
