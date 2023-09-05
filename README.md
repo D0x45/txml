@@ -69,8 +69,9 @@ type XMLInput =
     };
 
 // the parseXml function itself is implemented as a Generator
-// todo: maybe implement an Iterator<XMLToken> to widen the range of other functions' inputs?
-type TokensIterator = Generator<Readonly<XMLToken>, never | void, Readonly<XMLToken>>;
+type TokensIterator =
+  | Generator<Readonly<XMLToken>, never | void>
+  | IterableIterator<Readonly<XMLToken>>;
 
 enum XMLTokenType {
   TEXT = 0, // any text value
