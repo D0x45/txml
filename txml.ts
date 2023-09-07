@@ -99,7 +99,7 @@ export type XMLToken = {
   end: number;
   /**
    * array of charCodes for content. (e.g. `[97,97,97,97]`)
-   * to turn into string, you may use `String.fromCharCode(...token.content)`
+   * to turn into string, you may use `String.fromCharCode(...token.content)` or `getContentAsStr(token.content)`
    * this field might contain the content of a `CDATA`, `COMMENT` or `TEXT` block,
    * or it might contain the `tagName` of `ARBITRARY` and `DECLARATION` tags
    * it all depends on the `tag`'s value
@@ -283,8 +283,8 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
         // whitespace-sensitive
         canSkipWhitespace = false;
 
-        // NOTE: is the following line necessary?
-        // _resetToken();
+        // NOTE: the _resetToken() is duplicate
+        token.start = pos;
 
         // well, we are going to have a text node
         if (c0 !== CodePoint.ANGLE_BRACKET_OPEN) {
@@ -308,7 +308,6 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             // skip the ?
             ++pos;
             ++column;
-            ++token.start;
           } else if (c1 === CodePoint.FORWARD_SLASH) {
             token.type = XMLTokenType.TAG_CLOSE;
             token.tag = XMLTag.ARBITRARY;
@@ -316,7 +315,6 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             // skip the /
             ++pos;
             ++column;
-            ++token.start;
           } else if (_isAlphabetic(c1)) {
             token.type = XMLTokenType.TAG_OPEN;
             token.tag = XMLTag.ARBITRARY;
@@ -328,7 +326,6 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             // skip the ![CDATA[
             pos += 8;
             column += 8;
-            token.start += 8;
           } else if (_sliceEqualsStr('!--', pos + 1)) {
             token.type = XMLTokenType.TAG_SELF_CLOSE;
             token.tag = XMLTag.COMMENT;
@@ -336,7 +333,6 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
             // skip the !--
             pos += 3;
             column += 3;
-            token.start += 3;
           } else _throwError('Invalid tag name');
         }
         break;
@@ -346,6 +342,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
         // you might ask isn't the comparison redundant here?
         // well, yes and no. i'm just trying to prevent an extra function call and an extra loop of O(3)
         if (c0 === CodePoint.HYPHEN && _sliceEqualsStr('-->', pos)) {
+          token.end = pos + 2;
           yield _cloneAndFreezeToken();
           _resetToken();
           canSkipWhitespace = true;
@@ -353,15 +350,13 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
           // jump to the end of comment block
           pos += 3;
           column += 3;
-        } else {
-          token.content.push(c0);
-          token.end = pos;
-        }
+        } else token.content.push(c0);
         break;
 
       case ParserState.READING_CDATA:
         // data block reached the end of it
         if (c0 === CodePoint.SQUARE_BRACKET_CLOSE && _sliceEqualsStr(']]>', pos)) {
+          token.end = pos + 2;
           yield _cloneAndFreezeToken();
           _resetToken();
           canSkipWhitespace = true;
@@ -369,10 +364,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
           // jump to the end of cdata block
           pos += 3;
           column += 3;
-        } else {
-          token.content.push(c0);
-          token.end = pos;
-        }
+        } else token.content.push(c0);
         break;
 
       case ParserState.READING_TEXT_NODE:
@@ -388,7 +380,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
               entity_bytes.push(ec);
               token.end = pos + ei;
             }
-            ++token.end; // count the SEMICOLON that was skipped
+            ++token.end; // include the SEMICOLON that was skipped
             pos += entity_bytes.length + 1;
             column += entity_bytes.length + 1;
             token.content.push(_translateEntity(String.fromCharCode(...entity_bytes)));
