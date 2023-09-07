@@ -506,7 +506,7 @@ export function* parseXml(xml: XMLInput, canSkipStartingWhitespace = false): Tok
 }
 
 /** recursively parse nested tokens and return a tree  */
-export function buildXmlTree(tokens: TokensIterator, parentTagName?: string): Array<XMLNode> {
+export function buildXmlTree(tokens: TokensIterator, parentTagName: string | undefined = undefined): Array<XMLNode> {
   const nodes: Array<XMLNode> = [];
 
   // iterate with the generator returned by xml_tokenize function
