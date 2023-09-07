@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-case-declarations
 
-enum CodePoint {
+const enum CodePoint {
   EXCLAMATION = 33,
   DOUBLE_QUOTE = 34,
   SINGLE_QUOTE = 39,
@@ -22,7 +22,7 @@ enum CodePoint {
   SEMICOLON = 59,
 }
 
-enum ParserState {
+const enum ParserState {
   NONE = 0,
   READING_TAG_UNTIL_CLOSE,
   READING_TEXT_NODE,
@@ -30,7 +30,7 @@ enum ParserState {
   READING_CDATA,
 }
 
-enum ReadingTagState {
+const enum ReadingTagState {
   READING_TAG_NAME = 0,
   READING_ATTR_NAME,
   EXPECTING_EQUAL_SIGN,
